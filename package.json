@@ -57,5 +57,6 @@
   "dependencies": {
     "sharp": "^0.33.5"
   },
-  "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git"
+  "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
+  "publisher": "SundryGroupEnterprises"
 }
