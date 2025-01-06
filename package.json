@@ -1,5 +1,5 @@
 {
-  "name": "sundry-expot-asset-manager",
+  "name": "sundry-expot-assets-manager",
   "displayName": "ExpoAssetManager",
   "description": "Simplify the management of your React Native Expo app's assets with ExpoAssetManager! This powerful and user-friendly VS Code extension allows you to seamlessly select, resize, and configure essential app icons and splash images, all while adhering to the recommended dimensions for Expo projects.",
   "version": "0.0.1",
