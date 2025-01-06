@@ -1,71 +1,89 @@
-# sundry-expot-asset-manager README
 
-This is the README for your extension "sundry-expot-asset-manager". After writing up a brief description, we recommend including the following sections.
+# Expo Asset Manager
 
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+**Expo Asset Manager** is a powerful VS Code extension that helps you manage app assets for Expo projects. This tool allows you to process and resize images, update the app version, and preview assets dynamically.
 
 ---
 
-## Following extension guidelines
+### **Features**
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+1. **Image Processing**:
+   - Converts all image formats (e.g., JPG, WEBP) into PNG.
+   - Resizes images to match required dimensions (e.g., favicon, app icons, splash screens).
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+2. **Dynamic Previews**:
+   - Displays Base64-encoded previews of assets directly in the WebView.
 
-## Working with Markdown
+3. **App Version Management**:
+   - View, edit, and manage the `major`, `minor`, and `patch` version parts.
+   - Automatically update the `app.json` file with the new version.
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+4. **Seamless Integration**:
+   - Automatically updates the `app.json` file with asset paths and app version.
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+5. **User-Friendly Interface**:
+   - WebView interface to select files, update assets, and manage versions.
 
-## For more information
+6. **Error Handling**:
+   - Graceful error handling with meaningful error messages displayed in VS Code.
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+---
 
-**Enjoy!**
+### **How to Use**
+
+1. **Launch the Extension**:
+   - Open a folder containing an **Expo project** in VS Code.
+   - Press `F1` or `Ctrl+Shift+P` and type `Expo Asset Manager: Open`.
+
+2. **WebView Interface**:
+   - A WebView will open, displaying the app version and current asset previews.
+
+3. **Update App Version**:
+   - Use the `+` and `-` buttons or directly edit the `major`, `minor`, and `patch` version fields.
+   - The app version will be updated in the `app.json` file.
+
+4. **Upload and Process Assets**:
+   - Upload new assets (e.g., favicon, splash screen) by selecting files in the WebView.
+   - The assets are automatically converted to PNG and resized to required dimensions.
+   - The updated images are saved in the `assets/images` directory, and paths are added to `app.json`.
+
+5. **Preview Changes**:
+   - The WebView dynamically updates to show the modified assets and new app version.
+
+6. **Error Notifications**:
+   - If an error occurs (e.g., missing `app.json`), it will be displayed as a VS Code notification.
+
+---
+
+### **Supported Asset Types and Dimensions**
+
+| **Asset**         | **Dimensions** |
+|--------------------|----------------|
+| Favicon           | 32x32          |
+| Icon              | 1024x1024      |
+| Splash Screen     | 1280x720       |
+| Adaptive Icon     | 1080x1080      |
+
+---
+
+### **Development and Debugging**
+
+1. Open the project in VS Code.
+2. Press `F5` to launch the extension in a new VS Code window.
+3. Debug using the WebView console (`Ctrl+Shift+I`) or the extension's output in the VS Code Debug Console.
+
+---
+
+### **Error Handling and Logs**
+
+- **Missing `app.json`**: Ensure your workspace folder contains a valid `app.json` file.
+- **Invalid Files**: Upload valid image files (e.g., PNG, JPG, WEBP).
+- **Unexpected Errors**: View detailed logs in the VS Code Debug Console.
+
+---
+
+### **License**
+
+**Copyright © Sundry Group Enterprises. All rights reserved.**
+
+This project is licensed under the terms and conditions specified by Sundry Group Enterprises.
