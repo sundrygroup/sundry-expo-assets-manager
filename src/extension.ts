@@ -9,7 +9,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import sharp from "sharp";
+import * as Jimp from "jimp";
 
 /**
  * Process assets and update app.json
@@ -42,17 +42,15 @@ async function processAssets(
 	const newPreviews: Record<string, string> = {};
 
 	for (const [key, file] of Object.entries(data.files)) {
-		const filePath = path.join(assetsDir, `${key}.png`);
+		const filePath: any = path.join(assetsDir, `${key}.png`);
 		const [width, height] = sizeRequirements[key] || [1024, 1024]; // Default size if key not found
 
 		try {
 			const buffer = Buffer.from(file.content, "base64");
 
-			// Convert to PNG and resize
-			await sharp(buffer)
-				.resize(width, height, { fit: "cover" })
-				.png()
-				.toFile(filePath);
+			const image = await Jimp.Jimp.read(buffer);
+
+			image.resize({ w: width, h: height }).write(filePath);
 
 			const updatedBuffer = fs.readFileSync(filePath);
 			newPreviews[key] = `data:image/png;base64,${updatedBuffer.toString("base64")}`;
@@ -74,7 +72,7 @@ async function processAssets(
 		appJson.expo[key] = `./assets/images/${key}.png`;
 	});
 
-	fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
+	await fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
 
 	return newPreviews;
 }
@@ -96,8 +94,6 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			);
 
-
-
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 			if (!workspaceFolder) {
 				vscode.window.showErrorMessage("No folder is open in the workspace.");
@@ -105,18 +101,24 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			// Load initial assets and version
-			const assetImages = loadAssetImages(workspaceFolder);
-			const appVersion = loadAppVersion(workspaceFolder);
+			const { appVersion } = reloadHtml(workspaceFolder);
 
-			panel.webview.html = getWebviewContent(context, assetImages, appVersion);
+			panel.webview.onDidReceiveMessage(async (message) => {
+				if (message.type === "ready") {
+					// Send data to the WebView
+					panel.webview.postMessage({
+						type: "initialize",
+						appVersion: appVersion, // Pass the version dynamically
+					});
+				}
+			});
 
 			panel.webview.onDidReceiveMessage(async (message) => {
 				if (message.type === "update-assets") {
 					try {
-						const newPreviews = await processAssets(message.data, workspaceFolder);
-						const updatedAssetImages = loadAssetImages(workspaceFolder);
+						await processAssets(message.data, workspaceFolder);
 
-						panel.webview.html = getWebviewContent(context, updatedAssetImages, message.data.appVersion);
+						setTimeout(() => reloadHtml(workspaceFolder), 0);
 						vscode.window.showInformationMessage("Assets updated successfully!");
 					} catch (error: any) {
 						vscode.window.showErrorMessage(`Error updating assets: ${error.message}`);
@@ -127,6 +129,23 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 			});
+
+			function reloadHtml(workspaceFolder: string) {
+				const assetImages = loadAssetImages(workspaceFolder);
+				const version = loadAppVersion(workspaceFolder);
+
+
+				const scriptUri = panel.webview.asWebviewUri(
+					vscode.Uri.file(path.join(context.extensionPath, "media", "script.js"))
+				);
+
+				const htmlUri = panel.webview.asWebviewUri(
+					vscode.Uri.file(path.join(context.extensionPath, "media", "index.html"))
+				);
+
+				panel.webview.html = getWebviewContent(context, assetImages, version, scriptUri.toString(), htmlUri.toString());
+				return { appVersion: version, scriptUri, htmlUri };
+			}
 		})
 	);
 }
@@ -175,9 +194,11 @@ function loadAppVersion(workspaceFolder: string): string {
  * @param appVersion - App version
  * @returns {string} - HTML content for the WebView
  */
-function getWebviewContent(context: vscode.ExtensionContext, assetImages: Record<string, string>, appVersion: string): string {
+function getWebviewContent(context: vscode.ExtensionContext, assetImages: Record<string, string>,
+	appVersion: string, scriptUri: string, htmlUri: string): string {
 
-	const htmlPath = path.join(context.extensionPath, "src", "media", "index.html");
+
+	const htmlPath = path.join(context.extensionPath, "media", "index.html");
 	let htmlContent = fs.readFileSync(htmlPath, "utf-8");
 
 	Object.keys(assetImages).forEach(key => {
@@ -186,5 +207,14 @@ function getWebviewContent(context: vscode.ExtensionContext, assetImages: Record
 
 	htmlContent = htmlContent.replace(new RegExp(`{{appVersion}}`), appVersion);
 
+	const nonce = generateNonce();
+	htmlContent = htmlContent.replace(new RegExp(`{{nonce}}`), nonce);
+	htmlContent = htmlContent.replace(new RegExp(`{{scriptUri}}`), scriptUri);
+
 	return htmlContent;
 }
+
+function generateNonce(): string {
+	return [...Array(16)].map(() => Math.random().toString(36)[2]).join("");
+}
+

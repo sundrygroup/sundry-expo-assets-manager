@@ -2,7 +2,7 @@
   "name": "sundry-expot-assets-manager",
   "displayName": "ExpoAssetManager",
   "description": "Simplify the management of your React Native Expo app's assets with ExpoAssetManager! This powerful and user-friendly VS Code extension allows you to seamlessly select, resize, and configure essential app icons and splash images, all while adhering to the recommended dimensions for Expo projects.",
-  "version": "0.0.1",
+  "version": "0.0.10",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -16,17 +16,13 @@
       {
         "command": "expo-asset-manager.open",
         "title": "Open Expo Asset Manager"
-      },
-      {
-        "command": "expo-icons.manage",
-        "title": "Manage Expo Icons"
-      },
-      {
-        "command": "expo-icons.guidelines",
-        "title": "Icon Size Guidelines"
       }
+    ],
+    "activationEvents": [
+      "onCommand:expo-asset-manager.open"
     ]
   },
+
   "scripts": {
     "vscode:prepublish": "yarn run package",
     "compile": "yarn run check-types && yarn run lint && node esbuild.js",
@@ -44,18 +40,20 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.17.0",
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "electron-rebuild": "^3.2.9",
     "esbuild": "^0.24.0",
     "eslint": "^9.16.0",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "sharp": "^0.33.5"
+    "jimp": "^1.6.0"
   },
   "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
   "publisher": "SundryGroupEnterprises"
