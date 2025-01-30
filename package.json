@@ -22,7 +22,6 @@
       "onCommand:expo-asset-manager.open"
     ]
   },
-
   "scripts": {
     "vscode:prepublish": "yarn run package",
     "compile": "yarn run check-types && yarn run lint && node esbuild.js",
@@ -53,7 +52,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "jimp": "^1.6.0"
+    "sharp": "^0.33.5"
   },
   "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
   "publisher": "SundryGroupEnterprises"

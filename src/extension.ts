@@ -9,7 +9,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import * as Jimp from "jimp";
+import sharp from 'sharp';
 
 /**
  * Process assets and update app.json
@@ -48,11 +48,12 @@ async function processAssets(
 		try {
 			const buffer = Buffer.from(file.content, "base64");
 
-			const image = await Jimp.Jimp.read(buffer);
+			const updatedBuffer = await sharp(buffer)
+			.toFormat('png')  
+			.resize(width, height) 
+			.toBuffer();
 
-			image.resize({ w: width, h: height }).write(filePath);
-
-			const updatedBuffer = fs.readFileSync(filePath);
+			fs.writeFileSync(filePath, updatedBuffer);
 			newPreviews[key] = `data:image/png;base64,${updatedBuffer.toString("base64")}`;
 		} catch (err: any) {
 			throw new Error(`Failed to process ${key}: ${err.message}`);
