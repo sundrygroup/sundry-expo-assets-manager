@@ -9,7 +9,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import sharp from 'sharp';
+const sharp = require("./libvips-loader")();
 
 /**
  * Process assets and update app.json

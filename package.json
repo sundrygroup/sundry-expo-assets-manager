@@ -2,7 +2,7 @@
   "name": "sundry-expot-assets-manager",
   "displayName": "ExpoAssetManager",
   "description": "Simplify the management of your React Native Expo app's assets with ExpoAssetManager! This powerful and user-friendly VS Code extension allows you to seamlessly select, resize, and configure essential app icons and splash images, all while adhering to the recommended dimensions for Expo projects.",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -23,6 +23,8 @@
     ]
   },
   "scripts": {
+    "preinstall": "source venv/bin/activate || venv\\Scripts\\activate && pip install setuptools",
+    "postinstall": "node install-libvips.js",
     "vscode:prepublish": "yarn run package",
     "compile": "yarn run check-types && yarn run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
@@ -35,7 +37,9 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "package:vsix": "vsce package"
+    "package:vsix": "vsce package --no-yarn",
+    "docker:build": "docker build -t vscode-extension-builder .",
+    "docker:run": "docker run --rm -v $(pwd):/app vscode-extension-builder"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -55,6 +59,15 @@
   "dependencies": {
     "sharp": "^0.33.5"
   },
+  "optionalDependencies": {
+    "@img/sharp-darwin-x64": "0.33.5",
+    "@img/sharp-linux-arm": "^0.33.2",
+    "@img/sharp-win32-x64": "^0.33.2"
+  },
+  "files": [
+    "dist/**/*",
+    "node_modules/sharp/**/*"
+  ],
   "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
   "publisher": "SundryGroupEnterprises"
 }
