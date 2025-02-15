@@ -82,6 +82,25 @@
 
 ---
 
+The extension now uses ImageMagick for image processing by default.
+If ImageMagick is not installed, it falls back to Jimp, but WebP format will not be supported.
+A warning message will be displayed with installation instructions.
+Installation Guide for ImageMagick
+If ImageMagick is not installed, follow these steps:
+
+macOS:
+
+```
+brew install imagemagick
+```
+Windows:
+Download from ImageMagick Official Site and install it.
+Linux:
+```
+sudo apt install imagemagick   # For Ubuntu/Debian  
+sudo yum install ImageMagick   # For CentOS/Fedora
+```
+
 ### **License**
 
 **Copyright © Sundry Group Enterprises. All rights reserved.**

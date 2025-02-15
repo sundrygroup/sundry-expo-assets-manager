@@ -1,0 +1,101 @@
+Arguments: 
+  /Users/lisandromartinez/.nvm/versions/node/v18.18.2/bin/node /usr/local/bin/yarn
+
+PATH: 
+  /Users/lisandromartinez/.nvm/versions/node/v18.18.2/bin:/Users/lisandromartinez/.nvm/versions/node/v18.18.2/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/usr/local/go/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/Users/lisandromartinez/.nvm/versions/node/v18.18.2/bin:/Users/lisandromartinez/Library/Android/sdk/emulator:/Users/lisandromartinez/Library/Android/sdk/platform-tools:/Users/lisandromartinez/dotnet:/Users/lisandromartinez/Library/Application Support/Code/User/globalStorage/github.copilot-chat/debugCommand:/Users/lisandromartinez/Library/Android/sdk/emulator:/Users/lisandromartinez/Library/Android/sdk/platform-tools:/Users/lisandromartinez/dotnet
+
+Yarn version: 
+  1.22.19
+
+Node version: 
+  18.18.2
+
+Platform: 
+  darwin x64
+
+Trace: 
+  SyntaxError: /Users/lisandromartinez/projects/SundryGroup/sundry-expot-asset-manager/package.json: Unexpected token } in JSON at position 1614
+      at JSON.parse (<anonymous>)
+      at /usr/local/lib/node_modules/yarn/lib/cli.js:1629:59
+      at Generator.next (<anonymous>)
+      at step (/usr/local/lib/node_modules/yarn/lib/cli.js:310:30)
+      at /usr/local/lib/node_modules/yarn/lib/cli.js:321:13
+
+npm manifest: 
+  {
+    "name": "sundry-expot-assets-manager",
+    "displayName": "ExpoAssetManager",
+    "description": "Simplify the management of your React Native Expo app's assets with ExpoAssetManager! This powerful and user-friendly VS Code extension allows you to seamlessly select, resize, and configure essential app icons and splash images, all while adhering to the recommended dimensions for Expo projects.",
+    "version": "0.0.12",
+    "engines": {
+      "vscode": "^1.96.0"
+    },
+    "categories": [
+      "Other"
+    ],
+    "activationEvents": [],
+    "main": "./dist/extension.js",
+    "contributes": {
+      "commands": [
+        {
+          "command": "expo-asset-manager.open",
+          "title": "Open Expo Asset Manager"
+        }
+      ],
+      "activationEvents": [
+        "onCommand:expo-asset-manager.open"
+      ]
+    },
+    "scripts": {
+      "preinstall": "source venv/bin/activate || venv\\Scripts\\activate && pip install setuptools",
+      "postinstall": "node install-libvips.js",
+      "vscode:prepublish": "yarn run package",
+      "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+      "watch": "npm-run-all -p watch:*",
+      "watch:esbuild": "node esbuild.js --watch",
+      "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+      "package": "yarn run check-types && yarn run lint && node esbuild.js --production",
+      "compile-tests": "tsc -p . --outDir out",
+      "watch-tests": "tsc -p . -w --outDir out",
+      "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
+      "check-types": "tsc --noEmit",
+      "lint": "eslint src",
+      "test": "vscode-test",
+      "package:vsix": "vsce package --no-yarn",
+    },
+    "devDependencies": {
+      "@types/mocha": "^10.0.10",
+      "@types/node": "20.x",
+      "@types/pngjs": "^6.0.5",
+      "@types/vscode": "^1.96.0",
+      "@typescript-eslint/eslint-plugin": "^8.17.0",
+      "@typescript-eslint/parser": "^8.17.0",
+      "@vscode/test-cli": "^0.0.10",
+      "@vscode/test-electron": "^2.4.1",
+      "electron-rebuild": "^3.2.9",
+      "esbuild": "^0.24.0",
+      "eslint": "^9.16.0",
+      "npm-run-all": "^4.1.5",
+      "typescript": "^5.7.2"
+    },
+    "dependencies": {
+      "jimp": "^1.6.0"
+    },
+    "optionalDependencies": {
+      "@img/sharp-darwin-x64": "0.33.5",
+      "@img/sharp-linux-arm": "^0.33.2",
+      "@img/sharp-win32-x64": "^0.33.2"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/sharp/**/*"
+    ],
+    "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
+    "publisher": "SundryGroupEnterprises"
+  }
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile

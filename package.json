@@ -23,8 +23,6 @@
     ]
   },
   "scripts": {
-    "preinstall": "source venv/bin/activate || venv\\Scripts\\activate && pip install setuptools",
-    "postinstall": "node install-libvips.js",
     "vscode:prepublish": "yarn run package",
     "compile": "yarn run check-types && yarn run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
@@ -37,9 +35,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "package:vsix": "vsce package --no-yarn",
-    "docker:build": "docker build -t vscode-extension-builder .",
-    "docker:run": "docker run --rm -v $(pwd):/app vscode-extension-builder"
+    "package:vsix": "vsce package --no-yarn"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -50,24 +46,15 @@
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "electron-rebuild": "^3.2.9",
+    "@electron/rebuild": "^3.7.1",
     "esbuild": "^0.24.0",
     "eslint": "^9.16.0",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "sharp": "^0.33.5"
+    "jimp": "^1.6.0"
   },
-  "optionalDependencies": {
-    "@img/sharp-darwin-x64": "0.33.5",
-    "@img/sharp-linux-arm": "^0.33.2",
-    "@img/sharp-win32-x64": "^0.33.2"
-  },
-  "files": [
-    "dist/**/*",
-    "node_modules/sharp/**/*"
-  ],
   "repository": "https://github.com/sundrygroup/sundry-expo-assets-manager.git",
   "publisher": "SundryGroupEnterprises"
 }
