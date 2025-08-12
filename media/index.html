@@ -2,8 +2,7 @@
 <html lang="en">
 
 <head>
-  <meta http-equiv="Content-Security-Policy"
-    content="{{csp}}">
+  <meta http-equiv="Content-Security-Policy" content="{{csp}}">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Expo Asset Manager</title>
@@ -206,7 +205,27 @@
       color: #cfe0ff;
       cursor: pointer
     }
-    .toolbar { display:flex; gap:8px; align-items:center; margin:12px 0; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 12px 0;
+    }
+
+    .path-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .path-row input {
+      flex: 1;
+    }
+
+    .path-row button {
+      padding: 6px 10px;
+    }
   </style>
 </head>
 
@@ -238,6 +257,62 @@
     </div>
 
     <form class="asset-form" id="assetForm">
+      <!-- <div class="form-group">
+        <label for="favicon">Favicon</label>
+        <input type="file" id="favicon" accept="image/*" />
+
+        <div class="path-row">
+          <input id="favicon-dir" placeholder="Relative folder (e.g. assets/images)" />
+          <button type="button" class="choose-dir" data-asset="favicon" title="Choose folder">+</button>
+          <input id="favicon-name" placeholder="File name (e.g. favicon.png)" />
+        </div>
+        <div class="current-path" id="favicon-fullpath"></div>
+
+        <div class="file-preview">
+          <img id="favicon-preview" src="{{favicon}}" alt="Current Favicon" />
+        </div>
+      </div> -->
+
+
+      <!-- 
+      <div class="form-group">
+        <label for="icon">App Icon</label>
+        <input type="file" id="icon" accept="image/*" />
+        <div class="path-row">
+          <input id="icon-dir" placeholder="Relative folder" />
+          <button type="button" class="choose-dir" data-asset="icon" title="Choose folder">+</button>
+          <input id="icon-name" placeholder="File name (e.g. icon.png)" />
+        </div>
+        <div class="current-path" id="icon-fullpath"></div>
+        <div class="file-preview"><img id="icon-preview" src="{{icon}}" alt="Current App Icon" /></div>
+      </div>
+
+    
+      <div class="form-group">
+        <label for="splash-icon">Splash Icon</label>
+        <input type="file" id="splash-icon" accept="image/*" />
+        <div class="path-row">
+          <input id="splash-icon-dir" placeholder="Relative folder" />
+          <button type="button" class="choose-dir" data-asset="splash-icon" title="Choose folder">+</button>
+          <input id="splash-icon-name" placeholder="File name (e.g. splash.png)" />
+        </div>
+        <div class="current-path" id="splash-icon-fullpath"></div>
+        <div class="file-preview"><img id="splash-icon-preview" src="{{splash-icon}}" alt="Current Splash Icon" /></div>
+      </div>
+
+  
+      <div class="form-group">
+        <label for="adaptive-icon">Adaptive Icon</label>
+        <input type="file" id="adaptive-icon" accept="image/*" />
+        <div class="path-row">
+          <input id="adaptive-icon-dir" placeholder="Relative folder" />
+          <button type="button" class="choose-dir" data-asset="adaptive-icon" title="Choose folder">+</button>
+          <input id="adaptive-icon-name" placeholder="File name (e.g. adaptive-icon.png)" />
+        </div>
+        <div class="current-path" id="adaptive-icon-fullpath"></div>
+        <div class="file-preview"><img id="adaptive-icon-preview" src="{{adaptive-icon}}" alt="Current Adaptive Icon" />
+        </div>
+      </div> -->
       <div class="card dropzone" data-accept="favicon">
         <div class="title-row">
           <label for="favicon">Favicon</label>
@@ -250,8 +325,7 @@
         </div>
         <input type="file" id="favicon" accept="image/*" />
       </div>
-
-      <div class="card dropzone" data-accept="icon">
+          <div class="card dropzone" data-accept="icon">
         <div class="title-row">
           <label for="icon">App Icon</label>
           <button class="plus" type="button" data-for="icon">+</button>
@@ -263,7 +337,6 @@
         </div>
         <input type="file" id="icon" accept="image/*" />
       </div>
-
       <div class="card dropzone" data-accept="splash-icon">
         <div class="title-row">
           <label for="splash-icon">Splash Icon</label>
@@ -312,7 +385,7 @@
     <div class="loading" id="loading" style="display: none">Updating, please wait...</div>
     <div class="error" id="error-message" style="display: none"></div>
   </div>
-   <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
+  <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
 </body>
 
 </html>

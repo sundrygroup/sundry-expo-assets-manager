@@ -1,4 +1,25 @@
 const vscode = acquireVsCodeApi();
+const assetKeys = ["favicon", "icon", "splash-icon", "adaptive-icon"];
+
+function updateFullPathLabel(key) {
+  const dir = document.getElementById(`${key}-dir`)?.value?.trim() || "";
+  const name = document.getElementById(`${key}-name`)?.value?.trim() || "";
+  const full =
+    dir && name ? `${dir.replace(/\/+$/, "")}/${name.replace(/^\/+/, "")}` : "";
+  const el = document.getElementById(`${key}-fullpath`);
+  if (el) el.textContent = full || "—";
+}
+
+function readAssetDestinations() {
+  const out = {};
+  assetKeys.forEach((k) => {
+    out[k] = {
+      dir: document.getElementById(`${k}-dir`)?.value?.trim() || "",
+      filename: document.getElementById(`${k}-name`)?.value?.trim() || "",
+    };
+  });
+  return out;
+}
 
 window.addEventListener("message", (event) => {
   const message = event.data;
@@ -9,32 +30,75 @@ window.addEventListener("message", (event) => {
     setVersionPart("major-version", major);
     setVersionPart("minor-version", minor);
     setVersionPart("patch-version", patch);
-    if (message.sourcePath) setSourcePath(message.sourcePath);
-    if (message.currentPaths)
+    if (message.sourcePath) {
+      setSourcePath(message.sourcePath);
+    }
+    if (message.currentPaths) {
       Object.entries(message.currentPaths).forEach(([k, v]) =>
         setPathText(k, v)
       );
+    }
+
+    if (message.destinations) {
+      assetKeys.forEach((k) => {
+        const cfg = message.destinations[k] || {};
+        const d = document.getElementById(`${k}-dir`);
+        const n = document.getElementById(`${k}-name`);
+        if (d && cfg.dir) {
+          d.value = cfg.dir;
+        }
+        if (n && cfg.filename) {
+          n.value = cfg.filename;
+        }
+        updateFullPathLabel(k);
+      });
+    }
+  }
+  if (message.type === "asset-dir-chosen") {
+    const { key, dir } = message;
+    const input = document.getElementById(`${key}-dir`);
+    if (input) {
+      input.value = dir || "";
+      updateFullPathLabel(key);
+    }
   }
   if (message.type === "sourcePathUpdated") {
     setSourcePath(message.sourcePath || "Not set");
     // Ask host to refresh all previews/paths/version
     vscode.postMessage({ type: "refresh" });
   }
+
   if (message.type === "updated-previews") {
-    const previews = message.previews || {};
+    const previews = message.previews;
+
+    // Update the preview images dynamically
     Object.keys(previews).forEach((key) => {
       const imgElement = document.getElementById(`${key}-preview`);
-      if (imgElement && previews[key]) imgElement.src = `${previews[key]}?${Date.now()}`;
+      if (imgElement) {
+        console.log(`Updating ${key}-preview with new src`);
+        imgElement.src = `${previews[key]}?${new Date().getTime()}`; // Cache-busting
+      } else {
+        console.error(`Image element for ${key}-preview not found`);
+      }
     });
-    
-    // If host sends resolved current paths:
-    if (message.paths)
-      Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
-    document.getElementById("loading").style.display = "none";
-    // If you show per-asset paths in the UI, update them here.
-    // Example (only if you have <div id="{key}-path"> elements):
-    // Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
   }
+
+  // if (message.type === "updated-previews") {
+  //   const previews = message.previews || {};
+  //   Object.keys(previews).forEach((key) => {
+  //     const imgElement = document.getElementById(`${key}-preview`);
+  //     if (imgElement && previews[key])
+  //       imgElement.src = `${previews[key]}?${Date.now()}`;
+  //   });
+
+  //   // If host sends resolved current paths:
+  //   if (message.paths)
+  //     Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
+  //   document.getElementById("loading").style.display = "none";
+  //   // If you show per-asset paths in the UI, update them here.
+  //   // Example (only if you have <div id="{key}-path"> elements):
+  //   // Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
+  // }
   if (message.type === "error") {
     document.getElementById("loading").style.display = "none";
     document.getElementById(
@@ -107,7 +171,7 @@ function hookPlusButtons() {
 function hookFileInputs() {
   const ids = ["favicon", "icon", "splash-icon", "adaptive-icon"];
   ids.forEach((id) => {
-    const input = document.getElementById(id);
+    const input = document.getElementById(`${id}-preview`);
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       if (file) setPreviewFromBlob(id, file);
@@ -120,11 +184,31 @@ function setPreviewFromBlob(slot, file) {
   const reader = new FileReader();
   reader.onload = () => {
     const img = document.getElementById(`${slot}-preview`);
-    if (img) img.src = reader.result;
+    if (img) {
+      img.src = reader.result;
+    }
     const input = document.getElementById(slot);
     const dt = new DataTransfer();
     dt.items.add(file);
     input.files = dt.files;
+
+    assetKeys.forEach((k) => {
+      document
+        .getElementById(`${k}-dir`)
+        ?.addEventListener("input", () => updateFullPathLabel(k));
+      document
+        .getElementById(`${k}-name`)
+        ?.addEventListener("input", () => updateFullPathLabel(k));
+      // initial label
+      updateFullPathLabel(k);
+    });
+
+    document.querySelectorAll(".choose-dir").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const key = e.currentTarget.getAttribute("data-asset");
+        vscode.postMessage({ type: "choose-asset-dir", key });
+      });
+    });
   };
   reader.readAsDataURL(file);
 }
@@ -226,13 +310,34 @@ async function serializeFiles() {
         new Promise((resolve, reject) => {
           const input = document.getElementById(key);
           const f = input.files?.[0];
-          if (!f) return resolve();
+          if (!f) {
+            return resolve();
+          }
           const reader = new FileReader();
           reader.onload = () => {
             files[key] = {
               name: f.name,
               content: String(reader.result).split(",")[1],
             };
+
+            assetKeys.forEach((k) => {
+              document
+                .getElementById(`${k}-dir`)
+                ?.addEventListener("input", () => updateFullPathLabel(k));
+              document
+                .getElementById(`${k}-name`)
+                ?.addEventListener("input", () => updateFullPathLabel(k));
+              // initial label
+              updateFullPathLabel(k);
+            });
+
+            document.querySelectorAll(".choose-dir").forEach((btn) => {
+              btn.addEventListener("click", (e) => {
+                const key = e.currentTarget.getAttribute("data-asset");
+                vscode.postMessage({ type: "choose-asset-dir", key });
+              });
+            });
+
             resolve();
           };
           reader.onerror = () => reject(reader.error);
@@ -256,9 +361,10 @@ async function validateAndSubmit(event) {
 
   try {
     const serializedFiles = await serializeFiles();
+    const destinations = readAssetDestinations();
     vscode.postMessage({
       type: "update-assets",
-      data: { files: serializedFiles, appVersion },
+      data: { files: serializedFiles, appVersion, destinations },
     });
   } catch (error) {
     document.getElementById("loading").style.display = "none";

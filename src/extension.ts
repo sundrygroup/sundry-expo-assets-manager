@@ -36,7 +36,7 @@ async function isImageMagickInstalled(): Promise<boolean> {
  * Returns data URLs for live preview.
  */
 async function processAssets(
-  data: { files: Record<string, any>; appVersion: string },
+  data: { files: Record<string, any>; appVersion: string; destinations?: Record<string, { dir: string; filename: string }> },
   workspacePath: string
 ): Promise<Record<string, string>> {
   if (!data) throw new Error("No data provided for updating assets.");
@@ -61,8 +61,19 @@ async function processAssets(
   }
 
   for (const [key, file] of Object.entries(data.files)) {
-    const outPath = path.join(assetsDir, `${key}.png`);
+    // const outPath = path.join(assetsDir, `${key}.png`);
     const [width, height] = sizeRequirements[key] || [1024, 1024];
+
+    const destCfg = data.destinations?.[key] || {} as any;
+    const relDir = destCfg.dir?.trim() || "assets/images";
+    const fileName = destCfg.filename?.trim() || `${key}.png`;
+
+    const safeRelDir = relDir.replace(/^\/+|\/+$/g, ""); // sanitize
+    const destDir = path.join(workspacePath, safeRelDir);
+    const filePath = path.join(destDir, fileName);
+
+    // ensure dest folder exists
+    fs.mkdirSync(destDir, { recursive: true });
 
     try {
       const buffer = Buffer.from(file.content, "base64");
@@ -72,19 +83,18 @@ async function processAssets(
       if (magick) {
         await new Promise((resolve, reject) => {
           exec(
-            `magick convert "${tmp}" -resize ${width}x${height}! "${outPath}"`,
+            `magick convert "${tmp}" -resize ${width}x${height}! "${filePath}"`,
             (err) => (err ? reject(err) : resolve(true))
           );
         });
       } else {
         const image = await (Jimp as any).read(tmp);
-        await image.resize(width, height).writeAsync(outPath);
+        await image.resize(width, height).writeAsync(filePath);
       }
 
-      const updatedBuffer = fs.readFileSync(outPath);
-      newPreviews[key] = `data:image/png;base64,${updatedBuffer.toString(
-        "base64"
-      )}`;
+      // After writing:
+      const updatedBuffer = fs.readFileSync(filePath);
+      newPreviews[key] = `data:image/png;base64,${updatedBuffer.toString("base64")}`;
 
       fs.unlinkSync(tmp);
     } catch (e: any) {
@@ -94,15 +104,23 @@ async function processAssets(
 
   // Update app.json (version + paths)
   const appJsonPath = path.join(workspacePath, "app.json");
-  if (!fs.existsSync(appJsonPath))
+  if (!fs.existsSync(appJsonPath)) {
     throw new Error("app.json not found in the workspace.");
+  }
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
   appJson.expo = appJson.expo || {};
-  if (data.appVersion) appJson.expo.version = data.appVersion;
+  if (data.appVersion) { appJson.expo.version = data.appVersion; }
+
+  // Object.keys(data.files).forEach((key) => {
+  //   appJson.expo[key] = `./assets/images/${key}.png`;
+  // });
 
   Object.keys(data.files).forEach((key) => {
-    appJson.expo[key] = `./assets/images/${key}.png`;
+    const destCfg = data.destinations?.[key] || {} as any;
+    const relDir = (destCfg.dir?.trim() || "assets/images").replace(/^\/+|\/+$/g, "");
+    const fileName = destCfg.filename?.trim() || `${key}.png`;
+    appJson.expo[key] = `./${path.posix.join(relDir.replace(/\\/g, "/"), fileName)}`;
   });
 
   fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
@@ -151,6 +169,8 @@ async function openPanel(ctx: vscode.ExtensionContext) {
   );
 
   const refresh = async () => {
+
+    // const saved = context.globalState.get<Record<string,{dir:string;filename:string}>>("assetDestinations", {});
     panel.webview.postMessage({
       type: "initialize",
       appVersion: await readAppVersionOrDefault(),
@@ -178,16 +198,36 @@ async function openPanel(ctx: vscode.ExtensionContext) {
   panel.webview.onDidReceiveMessage(async (msg) => {
     try {
       switch (msg.type) {
+        case "choose-asset-dir": {
+          const key: string = msg.key;
+          const result = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            openLabel: "Select folder",
+            defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
+          });
+          if (result?.[0]) {
+            const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
+            let abs = result[0].fsPath;
+            // make a workspace-relative path
+            const rel = workspace ? path.relative(workspace, abs) : abs;
+            panel.webview.postMessage({ type: "asset-dir-chosen", key, dir: rel.replace(/\\/g, "/") });
+          }
+          break;
+        }
         case "refresh": {
           await refresh();
           break;
         }
         case "ready": {
+          // const saved = context.globalState.get<Record<string,{dir:string;filename:string}>>("assetDestinations", {});
           panel.webview.postMessage({
             type: "initialize",
             appVersion,
             sourcePath,
             currentPaths: await discoverCurrentAssetPaths(),
+            // destinations: saved,
           });
           break;
         }
@@ -241,9 +281,12 @@ async function openPanel(ctx: vscode.ExtensionContext) {
         }
 
         case "update-assets": {
+          debugger;
+          console.log('----->', msg);
           // Save images, update app.json, then refresh previews+paths
           await processAssets(msg.data, workspacePath);
 
+          // await context.globalState.update("assetDestinations", msg.data.destinations || {});
           panel.webview.postMessage({
             type: "updated-previews",
             previews: await getPreviewUris(panel.webview, ctx),
@@ -282,13 +325,17 @@ async function chooseSourcePath(
     canSelectMany: false,
     openLabel: "Use this folder",
   });
-  if (!pick || !pick[0]) return;
+  if (!pick || !pick[0]) {
+    return;
+  }
 
   const chosen = pick[0].fsPath;
   await ctx.workspaceState.update(STATE_KEY, chosen);
 
-  if (panel)
+  if (panel) {
     panel.webview.postMessage({ type: "sourcePathUpdated", sourcePath: chosen });
+  }
+
   vscode.window.showInformationMessage(`Original assets folder set to: ${chosen}`);
 }
 
@@ -305,7 +352,7 @@ async function revealSourcePath(ctx: vscode.ExtensionContext) {
 async function readAppVersionOrDefault(): Promise<string> {
   try {
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!folder) return "1.0.0";
+    if (!folder) { return "1.0.0"; }
     const appJsonPath = path.join(folder, "app.json");
     const content = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
     const version = content?.expo?.version || content?.version;
@@ -317,11 +364,13 @@ async function readAppVersionOrDefault(): Promise<string> {
 
 async function discoverCurrentAssetPaths(): Promise<Record<string, string>> {
   const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!base) return {};
+  if (!base) {
+    return {};
+  }
   const candidates: Record<string, string[]> = {
-    favicon: ["assets/images/favicon.png", "public/favicon.png"],
+    favicon: ["assets/favicon.png", "assets/images/favicon.png", "public/favicon.png"],
     icon: ["assets/images/icon.png", "assets/icon.png"],
-    "splash-icon": ["assets/images/splash.png", "assets/splash.png"],
+    "splash-icon": ["assets/images/splash.png", "assets/splash-icon.png", "assets/splash.png"],
     "adaptive-icon": ["assets/images/adaptive-icon.png", "assets/adaptive-icon.png"],
   };
   const result: Record<string, string> = {};
@@ -338,12 +387,14 @@ async function discoverCurrentAssetPaths(): Promise<Record<string, string>> {
 }
 
 async function getPreviewUris(webview: vscode.Webview, ctx: vscode.ExtensionContext) {
+  const current = getSourcePath(ctx);
+
   const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ctx.extensionPath;
-  const map: Record<string, string> = {
-    favicon: path.join(base, "assets/images/favicon.png"),
-    icon: path.join(base, "assets/images/icon.png"),
-    "splash-icon": path.join(base, "assets/images/splash.png"),
-    "adaptive-icon": path.join(base, "assets/images/adaptive-icon.png"),
+  const map: Record<string, string[]> = {
+    favicon: current ? [path.join(current, "favicon.png")] : [path.join(base, "assets/favicon.png"), path.join(base, "assets/images/favicon.png")],
+    icon: current ? [path.join(current, "icon.png")] : [path.join(base, "assets/icon.png"), path.join(base, "assets/images/icon.png")],
+    "splash-icon": current ? [path.join(current, "splash-icon.png")] : [path.join(base, "assets/splash.png"), path.join(base, "assets/splash-icon.png"), path.join(base, "assets/images/splash.png")],
+    "adaptive-icon": current ? [path.join(current, "adaptive-icon.png")] : [path.join(base, "assets/adaptive-icon.png"), path.join(base, "assets/images/adaptive-icon.png")],
   };
   const out: Record<string, string> = {};
   // for (const [k, p] of Object.entries(map)) {
@@ -354,10 +405,17 @@ async function getPreviewUris(webview: vscode.Webview, ctx: vscode.ExtensionCont
   //   }
   // }
   // return out;
-  for (const [k, p] of Object.entries(map)) {
-    if (fs.existsSync(p)) {
-      const uri = webview.asWebviewUri(vscode.Uri.file(p)).toString();
-      out[k] = uri;
+  for (const [k, list] of Object.entries(map)) {
+    for (const p of list) {
+      if (fs.existsSync(p)) {
+        const uri = webview.asWebviewUri(vscode.Uri.file(p)).toString();
+        out[k] = uri;
+        break;
+      } else {
+        out[k] = '';
+        //out[k] = 'data:image/gif;base64,R0lGODlhEAAQAIcAAP///wAAAP8AANPT0wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAAgALAAAAAAQABAAAAg2AAMIHEiwoMGDCBMqXMiwocOHECNKnEixosWLGDNq3Mix4sOHEB0KJGAUM2rUqFGjSJMqVMyxosWLGBMqXMmyZMmSMAAAOw==';
+        // out[k] = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2Ij4KPHJlY3QgeD0iMSIgeT0iMSIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE0IiBmaWxsPSIjZjJmMmYyIiBzdHJva2U9IiM5ZTllOWUiIHN0cm9rZS13aWR0aD0iMSIvPgo8bGluZSB4MT0iNCIgeTE9IjQiIHgyPSIxMiIgeTI9IjEyIiBzdHJva2U9IiNjMDM5MmIiIHN0cm9rZS13aWR0aD0iMiIvPgo8bGluZSB4MT0iMTIiIHkxPSI0IiB4Mj0iNCIgeTI9IjEyIiBzdHJva2U9IiNjMDM5MmIiIHN0cm9rZS13aWR0aD0iMiIvPgo8L3N2Zz4=';
+      }
     }
   }
   return out;
@@ -365,8 +423,8 @@ async function getPreviewUris(webview: vscode.Webview, ctx: vscode.ExtensionCont
 
 /** Build webview HTML with CSP + nonce and point to index.html/script.js in extension root. */
 function getHtml(webview: vscode.Webview, ctx: vscode.ExtensionContext) {
-  const htmlPath = path.join(ctx.extensionPath,"media", "index.html");
-  const jsPath = path.join(ctx.extensionPath,"media", "script.js");
+  const htmlPath = path.join(ctx.extensionPath, "media", "index.html");
+  const jsPath = path.join(ctx.extensionPath, "media", "script.js");
 
   const scriptUri = webview.asWebviewUri(vscode.Uri.file(jsPath)).toString();
   const nonce = makeNonce();
@@ -403,25 +461,25 @@ function makeNonce() {
 ---------------------------------------------------------*/
 function inferSlotFromName(name: string): string | null {
   const n = name.toLowerCase();
-  if (n.includes("favicon")) return "favicon";
-  if (n.includes("adaptive")) return "adaptive-icon";
-  if (n.includes("splash")) return "splash-icon";
-  if (n.includes("icon")) return "icon";
+  if (n.includes("favicon")) { return "favicon"; }
+  if (n.includes("adaptive")) { return "adaptive-icon"; }
+  if (n.includes("splash")) { return "splash-icon"; }
+  if (n.includes("icon")) { return "icon"; }
   return null;
 }
 
 function mimeFromName(name: string): string {
   const n = name.toLowerCase();
-  if (n.endsWith(".png")) return "image/png";
-  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
-  if (n.endsWith(".webp")) return "image/webp";
-  if (n.endsWith(".ico")) return "image/x-icon";
+  if (n.endsWith(".png")) { return "image/png"; }
+  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) { return "image/jpeg"; }
+  if (n.endsWith(".webp")) { return "image/webp"; }
+  if (n.endsWith(".ico")) { return "image/x-icon"; }
   return "application/octet-stream";
 }
 
 function toWorkspaceRelative(abs: string) {
   const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!base) return abs;
+  if (!base) { return abs; }
   try {
     const rel = path.relative(base, abs);
     return rel || abs;

@@ -32,10 +32,10 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
-    "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "package:vsix": "vsce package --no-yarn"
+    "package:vsix": "vsce package --no-yarn",
+    "check-types": "tsc --noEmit -p tsconfig.app.json"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
