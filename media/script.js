@@ -1,392 +1,290 @@
 const vscode = acquireVsCodeApi();
-const assetKeys = ["favicon", "icon", "splash-icon", "adaptive-icon"];
 
-function updateFullPathLabel(key) {
-  const dir = document.getElementById(`${key}-dir`)?.value?.trim() || "";
-  const name = document.getElementById(`${key}-name`)?.value?.trim() || "";
-  const full =
-    dir && name ? `${dir.replace(/\/+$/, "")}/${name.replace(/^\/+/, "")}` : "";
-  const el = document.getElementById(`${key}-fullpath`);
-  if (el) el.textContent = full || "—";
-}
+const assets = [
+  { key: "favicon", title: "Favicon", size: "32 x 32", fileName: "favicon.png", config: "expo.web.favicon" },
+  { key: "icon", title: "App Icon", size: "1024 x 1024", fileName: "icon.png", config: "expo.icon" },
+  { key: "splash-icon", title: "Splash Image", size: "1280 x 720", fileName: "splash-icon.png", config: "expo.splash.image or expo-splash-screen" },
+  { key: "adaptive-icon", title: "Adaptive Icon", size: "1080 x 1080", fileName: "adaptive-icon.png", config: "expo.android.adaptiveIcon.foregroundImage" },
+];
 
-function readAssetDestinations() {
-  const out = {};
-  assetKeys.forEach((k) => {
-    out[k] = {
-      dir: document.getElementById(`${k}-dir`)?.value?.trim() || "",
-      filename: document.getElementById(`${k}-name`)?.value?.trim() || "",
-    };
-  });
-  return out;
-}
+const state = {
+  files: {},
+  destinations: Object.fromEntries(assets.map((asset) => [asset.key, { folder: "assets/images", fileName: asset.fileName }])),
+};
+
+window.addEventListener("DOMContentLoaded", () => {
+  renderAssets();
+  wireChrome();
+  vscode.postMessage({ type: "ready" });
+});
 
 window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.type === "initialize") {
-    const [major, minor, patch] = String(message.appVersion || "0.0.0")
-      .split(".")
-      .map(Number);
-    setVersionPart("major-version", major);
-    setVersionPart("minor-version", minor);
-    setVersionPart("patch-version", patch);
-    if (message.sourcePath) {
-      setSourcePath(message.sourcePath);
-    }
-    if (message.currentPaths) {
-      Object.entries(message.currentPaths).forEach(([k, v]) =>
-        setPathText(k, v)
-      );
-    }
-
-    if (message.destinations) {
-      assetKeys.forEach((k) => {
-        const cfg = message.destinations[k] || {};
-        const d = document.getElementById(`${k}-dir`);
-        const n = document.getElementById(`${k}-name`);
-        if (d && cfg.dir) {
-          d.value = cfg.dir;
-        }
-        if (n && cfg.filename) {
-          n.value = cfg.filename;
-        }
-        updateFullPathLabel(k);
-      });
-    }
+    setVersion(message.appVersion || "1.0.0");
+    setSourcePath(message.sourcePath || "");
+    state.destinations = { ...state.destinations, ...(message.destinations || {}) };
+    updateDestinationInputs();
+    updateCurrentPaths(message.currentPaths || {});
+    updatePreviews(message.previews || {});
+    setStatus("");
   }
+
   if (message.type === "asset-dir-chosen") {
-    const { key, dir } = message;
-    const input = document.getElementById(`${key}-dir`);
-    if (input) {
-      input.value = dir || "";
-      updateFullPathLabel(key);
+    const destination = state.destinations[message.key];
+    if (destination) {
+      destination.folder = message.folder || destination.folder;
+      updateDestinationInputs();
     }
   }
+
   if (message.type === "sourcePathUpdated") {
-    setSourcePath(message.sourcePath || "Not set");
-    // Ask host to refresh all previews/paths/version
-    vscode.postMessage({ type: "refresh" });
+    setSourcePath(message.sourcePath || "");
   }
 
-  if (message.type === "updated-previews") {
-    const previews = message.previews;
-
-    // Update the preview images dynamically
-    Object.keys(previews).forEach((key) => {
-      const imgElement = document.getElementById(`${key}-preview`);
-      if (imgElement) {
-        console.log(`Updating ${key}-preview with new src`);
-        imgElement.src = `${previews[key]}?${new Date().getTime()}`; // Cache-busting
-      } else {
-        console.error(`Image element for ${key}-preview not found`);
-      }
-    });
-  }
-
-  // if (message.type === "updated-previews") {
-  //   const previews = message.previews || {};
-  //   Object.keys(previews).forEach((key) => {
-  //     const imgElement = document.getElementById(`${key}-preview`);
-  //     if (imgElement && previews[key])
-  //       imgElement.src = `${previews[key]}?${Date.now()}`;
-  //   });
-
-  //   // If host sends resolved current paths:
-  //   if (message.paths)
-  //     Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
-  //   document.getElementById("loading").style.display = "none";
-  //   // If you show per-asset paths in the UI, update them here.
-  //   // Example (only if you have <div id="{key}-path"> elements):
-  //   // Object.entries(message.paths).forEach(([k, v]) => setPathText(k, v));
-  // }
-  if (message.type === "error") {
-    document.getElementById("loading").style.display = "none";
-    document.getElementById(
-      "error-message"
-    ).textContent = `Error: ${message.message}`;
-    document.getElementById("error-message").style.display = "block";
-  }
-  if (message.type === "sourcePathUpdated") {
-    setSourcePath(message.sourcePath || "Not set");
-  }
   if (message.type === "dropped-files-ready") {
-    (message.files || []).forEach((f) =>
-      injectDataUrlIntoSlot(f.slot, f.name, f.dataUrl, f.path)
-    );
+    (message.files || []).forEach((file) => injectDataUrl(file.slot, file.name, file.dataUrl, file.path));
+  }
+
+  if (message.type === "error") {
+    setStatus(message.message || "Something went wrong.", true);
   }
 });
 
-function setVersionPart(id, value) {
-  const input = document.getElementById(id);
-  input.value = Number.isFinite(value) ? value : 0;
-}
+function renderAssets() {
+  const grid = document.getElementById("asset-grid");
+  grid.innerHTML = assets.map((asset) => `
+    <article class="asset" data-key="${asset.key}">
+      <div class="asset-head">
+        <div>
+          <h2>${asset.title}</h2>
+          <p class="meta">${asset.size}</p>
+        </div>
+        <button class="icon-button" type="button" data-pick="${asset.key}" title="Choose image">+</button>
+      </div>
+      <div class="preview empty" data-drop="${asset.key}">
+        <img id="${asset.key}-preview" alt="${asset.title} preview">
+      </div>
+      <div class="path" id="${asset.key}-path" title="No image selected">No image selected</div>
+      <div class="path-grid">
+        <div class="field">
+          <label for="${asset.key}-folder">Output folder</label>
+          <input id="${asset.key}-folder" data-folder="${asset.key}" value="assets/images">
+        </div>
+        <div class="field">
+          <label for="${asset.key}-filename">File name</label>
+          <input id="${asset.key}-filename" data-filename="${asset.key}" value="${asset.fileName}">
+        </div>
+        <button type="button" data-folder-pick="${asset.key}" title="Choose output folder">Browse</button>
+      </div>
+      <p class="hint" id="${asset.key}-config">${asset.config}</p>
+      <input id="${asset.key}-input" type="file" accept="image/*">
+    </article>
+  `).join("");
 
-function updateVersionPart(id, increment) {
-  const input = document.getElementById(id);
-  let value = parseInt(input.value, 10) || 0;
-  value = increment ? value + 1 : Math.max(0, value - 1);
-  input.value = value;
-}
-
-document
-  .getElementById("major-increment")
-  .addEventListener("click", () => updateVersionPart("major-version", true));
-document
-  .getElementById("major-decrement")
-  .addEventListener("click", () => updateVersionPart("major-version", false));
-document
-  .getElementById("minor-increment")
-  .addEventListener("click", () => updateVersionPart("minor-version", true));
-document
-  .getElementById("minor-decrement")
-  .addEventListener("click", () => updateVersionPart("minor-version", false));
-document
-  .getElementById("patch-increment")
-  .addEventListener("click", () => updateVersionPart("patch-version", true));
-document
-  .getElementById("patch-decrement")
-  .addEventListener("click", () => updateVersionPart("patch-version", false));
-
-function setPathText(idBase, text) {
-  const el = document.getElementById(`${idBase}-path`);
-  if (el) el.textContent = text || "No file chosen";
-}
-
-function setSourcePath(path) {
-  const pill = document.getElementById("source-path-pill");
-  pill.textContent = path || "Not set";
-  pill.title = path || "Not set";
-}
-
-function hookPlusButtons() {
-  document.querySelectorAll(".plus[data-for]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = btn.getAttribute("data-for");
-      const input = document.getElementById(target);
-      if (input) input.click();
+  assets.forEach((asset) => {
+    document.querySelector(`[data-pick="${asset.key}"]`).addEventListener("click", () => {
+      document.getElementById(`${asset.key}-input`).click();
     });
+
+    document.getElementById(`${asset.key}-input`).addEventListener("change", (event) => {
+      const file = event.currentTarget.files?.[0];
+      if (file) {
+        setFile(asset.key, file, file.name);
+      }
+    });
+
+    document.querySelector(`[data-folder="${asset.key}"]`).addEventListener("input", (event) => {
+      state.destinations[asset.key].folder = event.currentTarget.value.trim();
+      updateOutputPath(asset.key);
+    });
+
+    document.querySelector(`[data-filename="${asset.key}"]`).addEventListener("input", (event) => {
+      state.destinations[asset.key].fileName = event.currentTarget.value.trim();
+      updateOutputPath(asset.key);
+    });
+
+    document.querySelector(`[data-folder-pick="${asset.key}"]`).addEventListener("click", () => {
+      vscode.postMessage({ type: "choose-asset-dir", key: asset.key });
+    });
+
+    wireDropzone(document.querySelector(`[data-drop="${asset.key}"]`), asset.key);
   });
 }
 
-function hookFileInputs() {
-  const ids = ["favicon", "icon", "splash-icon", "adaptive-icon"];
-  ids.forEach((id) => {
-    const input = document.getElementById(`${id}-preview`);
-    input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      if (file) setPreviewFromBlob(id, file);
+function wireChrome() {
+  document.getElementById("refresh").addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
+  document.getElementById("save").addEventListener("click", submit);
+  document.getElementById("choose-source").addEventListener("click", () => vscode.postMessage({ type: "choose-source-path" }));
+  document.getElementById("reveal-source").addEventListener("click", () => vscode.postMessage({ type: "reveal-source-path" }));
+
+  document.querySelectorAll("[data-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = document.getElementById(`${button.dataset.step}-version`);
+      const value = Number.parseInt(input.value, 10) || 0;
+      input.value = String(Math.max(0, value + Number(button.dataset.delta)));
     });
   });
-}
 
-function setPreviewFromBlob(slot, file) {
-  setPathText(slot, file.name);
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = document.getElementById(`${slot}-preview`);
-    if (img) {
-      img.src = reader.result;
+  document.addEventListener("dragover", (event) => event.preventDefault());
+  document.addEventListener("drop", (event) => {
+    if (event.target.closest("[data-drop]")) {
+      return;
     }
-    const input = document.getElementById(slot);
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    input.files = dt.files;
-
-    assetKeys.forEach((k) => {
-      document
-        .getElementById(`${k}-dir`)
-        ?.addEventListener("input", () => updateFullPathLabel(k));
-      document
-        .getElementById(`${k}-name`)
-        ?.addEventListener("input", () => updateFullPathLabel(k));
-      // initial label
-      updateFullPathLabel(k);
-    });
-
-    document.querySelectorAll(".choose-dir").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const key = e.currentTarget.getAttribute("data-asset");
-        vscode.postMessage({ type: "choose-asset-dir", key });
-      });
-    });
-  };
-  reader.readAsDataURL(file);
+    event.preventDefault();
+    handleDrop(event, null);
+  });
 }
 
-function injectDataUrlIntoSlot(slot, name, dataUrl, shownPath) {
-  setPathText(slot, shownPath || name);
-  const img = document.getElementById(`${slot}-preview`);
-  if (img) img.src = dataUrl;
+function wireDropzone(zone, key) {
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("dragover");
+    handleDrop(event, key);
+  });
+}
+
+function handleDrop(event, targetSlot) {
+  const file = event.dataTransfer.files?.[0];
+  if (file) {
+    setFile(targetSlot || inferSlot(file.name), file, file.name);
+    return;
+  }
+
+  const uriList = event.dataTransfer.getData("text/uri-list");
+  if (uriList) {
+    vscode.postMessage({
+      type: "dropped-uris",
+      uris: uriList.split("\n").filter(Boolean),
+      targetSlot,
+    });
+  }
+}
+
+function setVersion(version) {
+  const [major = 0, minor = 0, patch = 0] = String(version).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  document.getElementById("major-version").value = String(major);
+  document.getElementById("minor-version").value = String(minor);
+  document.getElementById("patch-version").value = String(patch);
+}
+
+function getVersion() {
+  return ["major", "minor", "patch"]
+    .map((part) => Math.max(0, Number.parseInt(document.getElementById(`${part}-version`).value, 10) || 0))
+    .join(".");
+}
+
+function setSourcePath(sourcePath) {
+  const element = document.getElementById("source-path");
+  element.textContent = sourcePath || "No source folder set";
+  element.title = sourcePath || "No source folder set";
+}
+
+function updateDestinationInputs() {
+  assets.forEach((asset) => {
+    const destination = state.destinations[asset.key];
+    document.getElementById(`${asset.key}-folder`).value = destination.folder || "assets/images";
+    document.getElementById(`${asset.key}-filename`).value = destination.fileName || asset.fileName;
+    updateOutputPath(asset.key);
+  });
+}
+
+function updateOutputPath(key) {
+  const destination = state.destinations[key];
+  const folder = (destination.folder || "assets/images").replace(/\/+$/g, "");
+  const fileName = (destination.fileName || `${key}.png`).replace(/^\/+/g, "");
+  const label = document.getElementById(`${key}-config`);
+  label.title = `./${folder}/${fileName}`;
+}
+
+function updateCurrentPaths(paths) {
+  assets.forEach((asset) => {
+    const value = paths[asset.key];
+    if (value && !state.files[asset.key]) {
+      setPath(asset.key, value);
+    }
+  });
+}
+
+function updatePreviews(previews) {
+  Object.entries(previews).forEach(([key, source]) => {
+    const img = document.getElementById(`${key}-preview`);
+    if (!img || !source) {
+      return;
+    }
+    img.src = source;
+    img.parentElement.classList.remove("empty");
+  });
+}
+
+function setPath(key, path) {
+  const element = document.getElementById(`${key}-path`);
+  element.textContent = path || "No image selected";
+  element.title = path || "No image selected";
+}
+
+function setFile(key, file, shownPath) {
+  state.files[key] = file;
+  setPath(key, shownPath);
+  const img = document.getElementById(`${key}-preview`);
+  img.src = URL.createObjectURL(file);
+  img.parentElement.classList.remove("empty");
+}
+
+function injectDataUrl(slot, name, dataUrl, shownPath) {
   fetch(dataUrl)
-    .then((r) => r.blob())
-    .then((blob) => {
-      const file = new File([blob], name, { type: blob.type });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      const input = document.getElementById(slot);
-      input.files = dt.files;
-    });
+    .then((response) => response.blob())
+    .then((blob) => setFile(slot, new File([blob], name, { type: blob.type }), shownPath || name))
+    .catch((error) => setStatus(error.message, true));
 }
 
-function inferKeyFromName(name) {
-  const n = name.toLowerCase();
-  if (n.includes("favicon")) return "favicon";
-  if (n.includes("adaptive")) return "adaptive-icon";
-  if (n.includes("splash")) return "splash-icon";
-  if (n.includes("icon")) return "icon";
-  return null;
-}
-
-function attachDnD() {
-  const zones = document.querySelectorAll(".dropzone");
-  zones.forEach((zone) => {
-    zone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      zone.classList.add("dragover");
-    });
-    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
-    zone.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      zone.classList.remove("dragover");
-
-      const targetSlot = zone.getAttribute("data-accept");
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        const inferred = targetSlot || inferKeyFromName(file.name) || "icon";
-        setPreviewFromBlob(inferred, file);
-        return;
-      }
-      const uriList = e.dataTransfer.getData("text/uri-list");
-      if (uriList) {
-        const uris = uriList.split("\n").filter(Boolean);
-        vscode.postMessage({ type: "dropped-uris", uris, targetSlot });
-      }
-    });
-  });
-
-  document.addEventListener("dragover", (e) => e.preventDefault());
-  document.addEventListener("drop", (e) => {
-    if (e.target.closest && e.target.closest(".dropzone")) return;
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const inferred = inferKeyFromName(file.name) || "icon";
-      setPreviewFromBlob(inferred, file);
-    } else {
-      const uriList = e.dataTransfer.getData("text/uri-list");
-      if (uriList)
-        vscode.postMessage({
-          type: "dropped-uris",
-          uris: uriList.split("\n").filter(Boolean),
-          targetSlot: null,
-        });
-    }
-  });
-}
-
-function wireSourceBar() {
-  document
-    .getElementById("choose-source")
-    .addEventListener("click", () =>
-      vscode.postMessage({ type: "choose-source-path" })
-    );
-  document
-    .getElementById("reveal-source")
-    .addEventListener("click", () =>
-      vscode.postMessage({ type: "reveal-source-path" })
-    );
-
-  document.getElementById("refresh")?.addEventListener("click", () => {
-    vscode.postMessage({ type: "refresh" });
-  });
-}
-
-async function serializeFiles() {
-  const files = {};
-  const keys = ["favicon", "icon", "splash-icon", "adaptive-icon"];
-  await Promise.all(
-    keys.map(
-      (key) =>
-        new Promise((resolve, reject) => {
-          const input = document.getElementById(key);
-          const f = input.files?.[0];
-          if (!f) {
-            return resolve();
-          }
-          const reader = new FileReader();
-          reader.onload = () => {
-            files[key] = {
-              name: f.name,
-              content: String(reader.result).split(",")[1],
-            };
-
-            assetKeys.forEach((k) => {
-              document
-                .getElementById(`${k}-dir`)
-                ?.addEventListener("input", () => updateFullPathLabel(k));
-              document
-                .getElementById(`${k}-name`)
-                ?.addEventListener("input", () => updateFullPathLabel(k));
-              // initial label
-              updateFullPathLabel(k);
-            });
-
-            document.querySelectorAll(".choose-dir").forEach((btn) => {
-              btn.addEventListener("click", (e) => {
-                const key = e.currentTarget.getAttribute("data-asset");
-                vscode.postMessage({ type: "choose-asset-dir", key });
-              });
-            });
-
-            resolve();
-          };
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(f);
-        })
-    )
-  );
-  return files;
-}
-
-async function validateAndSubmit(event) {
-  event.preventDefault();
-  const appVersion = [
-    document.getElementById("major-version").value || 0,
-    document.getElementById("minor-version").value || 0,
-    document.getElementById("patch-version").value || 0,
-  ].join(".");
-
-  document.getElementById("loading").style.display = "block";
-  document.getElementById("error-message").style.display = "none";
-
+async function submit() {
+  setStatus("Updating assets...");
   try {
-    const serializedFiles = await serializeFiles();
-    const destinations = readAssetDestinations();
+    const files = {};
+    await Promise.all(Object.entries(state.files).map(([key, file]) => readFile(file).then((content) => {
+      files[key] = { name: file.name, content };
+    })));
+
     vscode.postMessage({
       type: "update-assets",
-      data: { files: serializedFiles, appVersion, destinations },
+      data: {
+        appVersion: getVersion(),
+        files,
+        destinations: state.destinations,
+      },
     });
   } catch (error) {
-    document.getElementById("loading").style.display = "none";
-    document.getElementById(
-      "error-message"
-    ).textContent = `Error: ${error.message}`;
-    document.getElementById("error-message").style.display = "block";
+    setStatus(error.message || String(error), true);
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  hookPlusButtons();
-  hookFileInputs();
-  wireSourceBar();
-  attachDnD();
-  document
-    .getElementById("assetForm")
-    .addEventListener("submit", validateAndSubmit);
-  vscode.postMessage({ type: "ready" });
-});
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
-function setSourcePath(path) {
-  const el = document.getElementById("source-path");
-  if (el) el.textContent = path || "Not set";
+function setStatus(message, isError = false) {
+  const status = document.getElementById("status");
+  status.textContent = message;
+  status.classList.toggle("show", Boolean(message));
+  status.classList.toggle("error", isError);
+}
+
+function inferSlot(name) {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("favicon")) return "favicon";
+  if (normalized.includes("adaptive")) return "adaptive-icon";
+  if (normalized.includes("splash")) return "splash-icon";
+  if (normalized.includes("icon")) return "icon";
+  return "icon";
 }

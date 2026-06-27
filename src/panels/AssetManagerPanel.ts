@@ -56,9 +56,13 @@ export class AssetManagerPanel {
         const previews: Partial<Record<AssetKey, string>> = {};
         (Object.keys(SIZE) as AssetKey[]).forEach((k) => {
             const rel = app.getExistingAssetPath(k);
-            if (!rel) return;
+            if (!rel) {
+                return;
+            }
             const abs = path.join(this.workspacePath, rel.replace(/^\.\//, ''));
-            if (!fs.existsSync(abs)) return;
+            if (!fs.existsSync(abs)) {
+                return;
+            }
             const b64 = fs.readFileSync(abs).toString('base64');
             previews[k] = `data:image/png;base64,${b64}`;
         });
@@ -93,11 +97,15 @@ export class AssetManagerPanel {
 
     private async onMessage(panel: vscode.WebviewPanel, msg: FromWebview) {
         try {
-            if (msg.type === 'ready' || msg.type === 'refresh') return this.postInitialize(panel);
+            if (msg.type === 'ready' || msg.type === 'refresh') {
+                return this.postInitialize(panel);
+            }
 
             if (msg.type === 'select-source-folder') {
                 const pick = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false });
-                if (pick?.[0]) panel.webview.postMessage({ type: 'refresh' }); // Webview will re-request initialize
+                if (pick?.[0]) {
+                    panel.webview.postMessage({ type: 'refresh' }); // Webview will re-request initialize
+                }
                 return;
             }
 
@@ -124,7 +132,9 @@ export class AssetManagerPanel {
         const proc = await createProcessor();
 
         // version
-        if (data.appVersion) app.updateVersion(data.appVersion);
+        if (data.appVersion) {
+            app.updateVersion(data.appVersion);
+        }
 
         // files
         for (const [k, file] of Object.entries(data.files ?? {})) {
@@ -137,7 +147,7 @@ export class AssetManagerPanel {
             fs.writeFileSync(tmp, Buffer.from(file.content, 'base64'));
 
             const dest = (data.destinations as any)?.[key] ?? { folder: 'assets/images', fileName: `${key}.png` };
-            const { outputPath, appJsonPath } = paths.resolve(key, dest.folder, dest.fileName);
+            const { outputPath, appJsonPath } = paths.resolve(dest.folder, dest.fileName);
 
             await proc.resizeTo(tmp, w, h, outputPath);
             fs.unlinkSync(tmp);

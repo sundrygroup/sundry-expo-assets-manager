@@ -1,7 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { AssetKey } from '../models/assets';
-
 /** Resolves user-chosen folder + fileName to:
  *  - absolute outputPath (for writing the PNG)
  *  - relative appJsonPath (starts with "./")
@@ -11,15 +9,27 @@ export class AssetPathService {
     constructor(private workspaceRoot: string) { }
 
     ensureFolder(absFolder: string) {
-        if (!fs.existsSync(absFolder)) fs.mkdirSync(absFolder, { recursive: true });
+        if (!fs.existsSync(absFolder)) {
+            fs.mkdirSync(absFolder, { recursive: true });
+        }
     }
 
-    resolve(key: AssetKey, folderRel: string, fileName: string) {
-        const safeFolderRel = folderRel.replace(/^\.?\//, ''); // normalize
-        const relPath = `./${safeFolderRel}/${fileName}`;
+    resolve(folderRel: string, fileName: string) {
+        const safeFolderRel = normalizeRel(folderRel || 'assets/images');
+        const safeFileName = path.basename(fileName || 'asset.png');
+        const relPath = `./${path.posix.join(safeFolderRel, safeFileName)}`;
         const absFolder = path.join(this.workspaceRoot, safeFolderRel);
         this.ensureFolder(absFolder);
-        const absOut = path.join(absFolder, fileName);
+        const absOut = path.join(absFolder, safeFileName);
         return { outputPath: absOut, appJsonPath: relPath };
     }
+}
+
+function normalizeRel(input: string) {
+    const normalized = input.replace(/\\/g, '/').replace(/^\.?\//, '').replace(/^\/+|\/+$/g, '');
+    const safe = path.posix.normalize(normalized || 'assets/images');
+    if (safe === '..' || safe.startsWith('../') || path.isAbsolute(safe)) {
+        throw new Error('Asset output folder must stay inside the workspace.');
+    }
+    return safe;
 }
