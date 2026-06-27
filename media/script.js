@@ -9,7 +9,12 @@ const assets = [
 
 const state = {
   files: {},
+  previewUrls: {},
   destinations: Object.fromEntries(assets.map((asset) => [asset.key, { folder: "assets/images", fileName: asset.fileName }])),
+  generating: {},
+  statusMessageClearMs: 8000,
+  statusTimer: null,
+  aiTimers: {},
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -23,6 +28,7 @@ window.addEventListener("message", (event) => {
   if (message.type === "initialize") {
     setVersion(message.appVersion || "1.0.0");
     setSourcePath(message.sourcePath || "");
+    state.statusMessageClearMs = normalizeClearMs(message.statusMessageClearMs);
     state.destinations = { ...state.destinations, ...(message.destinations || {}) };
     updateDestinationInputs();
     updateCurrentPaths(message.currentPaths || {});
@@ -46,6 +52,14 @@ window.addEventListener("message", (event) => {
     (message.files || []).forEach((file) => injectDataUrl(file.slot, file.name, file.dataUrl, file.path));
   }
 
+  if (message.type === "asset-generated") {
+    injectDataUrl(message.key, message.name || `ai-${message.key}.png`, message.dataUrl, `AI generated ${message.name || "asset"}`, true);
+  }
+
+  if (message.type === "ai-status") {
+    setAiStatus(message.key, message.status, message.message || "");
+  }
+
   if (message.type === "error") {
     setStatus(message.message || "Something went wrong.", true);
   }
@@ -66,6 +80,16 @@ function renderAssets() {
         <img id="${asset.key}-preview" alt="${asset.title} preview">
       </div>
       <div class="path" id="${asset.key}-path" title="No image selected">No image selected</div>
+      <div class="ai-tools">
+        <div class="ai-row">
+          <div class="field">
+            <label for="${asset.key}-ai-description">AI description</label>
+            <textarea id="${asset.key}-ai-description" data-ai-description="${asset.key}" placeholder="Optional style, brand, colors, or subject"></textarea>
+          </div>
+          <button type="button" data-generate="${asset.key}" title="Generate ${asset.title} with AI">Generate</button>
+        </div>
+        <div class="ai-message" id="${asset.key}-ai-message" aria-live="polite"></div>
+      </div>
       <div class="path-grid">
         <div class="field">
           <label for="${asset.key}-folder">Output folder</label>
@@ -107,6 +131,8 @@ function renderAssets() {
     document.querySelector(`[data-folder-pick="${asset.key}"]`).addEventListener("click", () => {
       vscode.postMessage({ type: "choose-asset-dir", key: asset.key });
     });
+
+    document.querySelector(`[data-generate="${asset.key}"]`).addEventListener("click", () => generateAsset(asset.key));
 
     wireDropzone(document.querySelector(`[data-drop="${asset.key}"]`), asset.key);
   });
@@ -228,19 +254,78 @@ function setPath(key, path) {
   element.title = path || "No image selected";
 }
 
-function setFile(key, file, shownPath) {
+function setFile(key, file, shownPath, previewSource) {
   state.files[key] = file;
   setPath(key, shownPath);
+  setPreviewSource(key, previewSource || URL.createObjectURL(file));
+}
+
+function setPreviewSource(key, source) {
   const img = document.getElementById(`${key}-preview`);
-  img.src = URL.createObjectURL(file);
+  if (state.previewUrls[key]) {
+    URL.revokeObjectURL(state.previewUrls[key]);
+    state.previewUrls[key] = null;
+  }
+  if (String(source).startsWith("blob:")) {
+    state.previewUrls[key] = source;
+  }
+  img.src = source;
   img.parentElement.classList.remove("empty");
 }
 
-function injectDataUrl(slot, name, dataUrl, shownPath) {
-  fetch(dataUrl)
-    .then((response) => response.blob())
-    .then((blob) => setFile(slot, new File([blob], name, { type: blob.type }), shownPath || name))
-    .catch((error) => setStatus(error.message, true));
+function injectDataUrl(slot, name, dataUrl, shownPath, clearGlobalError = false) {
+  try {
+    const blob = dataUrlToBlob(dataUrl);
+    setFile(slot, new File([blob], name, { type: blob.type }), shownPath || name, dataUrl);
+    if (clearGlobalError) {
+      setStatus("");
+    }
+  } catch (error) {
+    setStatus(error.message || String(error), true);
+  }
+}
+
+function dataUrlToBlob(dataUrl) {
+  const match = String(dataUrl).match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if (!match) {
+    throw new Error("Generated image data was not in a supported format.");
+  }
+
+  const mimeType = match[1] || "application/octet-stream";
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+  const raw = isBase64 ? atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) {
+    bytes[index] = raw.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function generateAsset(key) {
+  if (state.generating[key]) {
+    return;
+  }
+  const description = document.querySelector(`[data-ai-description="${key}"]`)?.value || "";
+  setStatus("");
+  setAiStatus(key, "loading", "Generating image...");
+  vscode.postMessage({ type: "generate-asset", key, description });
+}
+
+function setAiStatus(key, status, message) {
+  state.generating[key] = status === "loading";
+  const button = document.querySelector(`[data-generate="${key}"]`);
+  if (button) {
+    button.disabled = state.generating[key];
+    button.textContent = state.generating[key] ? "Generating..." : "Generate";
+  }
+
+  const element = document.getElementById(`${key}-ai-message`);
+  if (element) {
+    element.textContent = message || "";
+    element.classList.toggle("error", status === "error");
+  }
+  scheduleAiStatusClear(key, status, message);
 }
 
 async function submit() {
@@ -278,6 +363,44 @@ function setStatus(message, isError = false) {
   status.textContent = message;
   status.classList.toggle("show", Boolean(message));
   status.classList.toggle("error", isError);
+  scheduleStatusClear(message);
+}
+
+function normalizeClearMs(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 8000;
+}
+
+function scheduleStatusClear(message) {
+  if (state.statusTimer) {
+    clearTimeout(state.statusTimer);
+    state.statusTimer = null;
+  }
+  if (!message || state.statusMessageClearMs <= 0) {
+    return;
+  }
+  state.statusTimer = setTimeout(() => {
+    state.statusTimer = null;
+    setStatus("");
+  }, state.statusMessageClearMs);
+}
+
+function scheduleAiStatusClear(key, status, message) {
+  if (state.aiTimers[key]) {
+    clearTimeout(state.aiTimers[key]);
+    state.aiTimers[key] = null;
+  }
+  if (!message || status === "loading" || state.statusMessageClearMs <= 0) {
+    return;
+  }
+  state.aiTimers[key] = setTimeout(() => {
+    state.aiTimers[key] = null;
+    const element = document.getElementById(`${key}-ai-message`);
+    if (element && !state.generating[key]) {
+      element.textContent = "";
+      element.classList.remove("error");
+    }
+  }, state.statusMessageClearMs);
 }
 
 function inferSlot(name) {

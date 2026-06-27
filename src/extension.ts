@@ -3,10 +3,12 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AppJsonService } from './services/AppJsonService';
 import { AssetPathService } from './services/AssetPathService';
+import { AiAssetService, resolveOpenAiApiKey, type AiAssetQuality, type AiContextMode } from './services/AiAssetService';
 import { createProcessor } from './services/image/processorFactory';
 import { SIZE, type AssetKey, type UpdatePayload } from './models/assets';
 
 const STATE_KEY = 'expoAssetManager.sourcePath';
+const OPENAI_API_KEY_SECRET = 'expoAssetManager.openaiApiKey';
 const ASSET_KEYS = Object.keys(SIZE) as AssetKey[];
 
 export function activate(context: vscode.ExtensionContext) {
@@ -14,6 +16,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('expo-asset-manager.open', () => openPanel(context)),
         vscode.commands.registerCommand('expo-asset-manager.setSourceFolder', () => chooseSourcePath(context)),
         vscode.commands.registerCommand('expo-asset-manager.revealSourceFolder', () => revealSourcePath(context)),
+        vscode.commands.registerCommand('expo-asset-manager.setOpenAiApiKey', () => setOpenAiApiKey(context)),
+        vscode.commands.registerCommand('expo-asset-manager.clearOpenAiApiKey', () => clearOpenAiApiKey(context)),
     );
 }
 
@@ -55,6 +59,9 @@ async function openPanel(ctx: vscode.ExtensionContext) {
                 case 'dropped-uris':
                     await hydrateDroppedUris(panel, msg.uris || [], msg.targetSlot || null);
                     break;
+                case 'generate-asset':
+                    await generateAsset(panel, ctx, workspaceFolder.uri.fsPath, msg.key, msg.description || '');
+                    break;
                 case 'update-assets':
                     await updateAssets(workspaceFolder.uri.fsPath, msg.data);
                     vscode.window.showInformationMessage('Expo assets updated.');
@@ -83,6 +90,7 @@ async function postInitialize(panel: vscode.WebviewPanel, ctx: vscode.ExtensionC
         type: 'initialize',
         appVersion: config.getVersion(),
         sourcePath: getSourcePath(ctx),
+        statusMessageClearMs: getStatusMessageClearMs(),
         previews,
         destinations: config.getCurrentDestinations(),
         currentPaths: Object.fromEntries(ASSET_KEYS.map((key) => [key, config.getExistingAssetPath(key) ?? ''])),
@@ -122,6 +130,43 @@ async function updateAssets(workspacePath: string, data: UpdatePayload) {
     }
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+async function generateAsset(panel: vscode.WebviewPanel, ctx: vscode.ExtensionContext, workspacePath: string, key: AssetKey, description: string) {
+    if (!ASSET_KEYS.includes(key)) {
+        throw new Error('Unknown asset type for AI generation.');
+    }
+
+    panel.webview.postMessage({ type: 'ai-status', key, status: 'loading', message: 'Generating image...' });
+    try {
+        const apiKey = await getOpenAiApiKey(ctx);
+        if (!apiKey) {
+            throw new Error('OpenAI API key is missing. Run "Expo Asset Manager: Set OpenAI API Key" or set OPENAI_API_KEY.');
+        }
+
+        const service = new AiAssetService(workspacePath);
+        const file = await service.generateAsset({
+            key,
+            description,
+            apiKey,
+            model: getAiModel(),
+            quality: getAiQuality(),
+            outputFormat: getAiOutputFormat(),
+            contextMode: getAiContextMode(),
+        });
+
+        panel.webview.postMessage({
+            type: 'asset-generated',
+            key,
+            name: file.name,
+            dataUrl: `data:image/png;base64,${file.content}`,
+        });
+        panel.webview.postMessage({ type: 'ai-status', key, status: 'idle', message: 'Generated. Click Update Assets to save.' });
+    } catch (error: any) {
+        const message = error?.message ?? String(error);
+        panel.webview.postMessage({ type: 'ai-status', key, status: 'error', message });
+        panel.webview.postMessage({ type: 'error', message });
+    }
 }
 
 async function chooseAssetDir(panel: vscode.WebviewPanel, key: AssetKey) {
@@ -172,6 +217,64 @@ async function revealSourcePath(ctx: vscode.ExtensionContext) {
     await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(current));
 }
 
+async function setOpenAiApiKey(ctx: vscode.ExtensionContext) {
+    const value = await vscode.window.showInputBox({
+        title: 'Set OpenAI API Key',
+        prompt: 'Enter an OpenAI API key for Expo Asset Manager AI generation.',
+        password: true,
+        ignoreFocusOut: true,
+        placeHolder: 'sk-...',
+    });
+    if (!value?.trim()) {
+        return;
+    }
+    await ctx.secrets.store(OPENAI_API_KEY_SECRET, value.trim());
+    vscode.window.showInformationMessage('OpenAI API key saved for Expo Asset Manager.');
+}
+
+async function clearOpenAiApiKey(ctx: vscode.ExtensionContext) {
+    await ctx.secrets.delete(OPENAI_API_KEY_SECRET);
+    vscode.window.showInformationMessage('OpenAI API key cleared for Expo Asset Manager.');
+}
+
+async function getOpenAiApiKey(ctx: vscode.ExtensionContext): Promise<string | undefined> {
+    return resolveOpenAiApiKey({
+        secret: await ctx.secrets.get(OPENAI_API_KEY_SECRET),
+        configuration: vscode.workspace.getConfiguration().get<string>('expoAssetManager.openaiApiKey'),
+        environment: process.env.OPENAI_API_KEY,
+    });
+}
+
+function getAiModel(): string {
+    return vscode.workspace.getConfiguration().get<string>('expoAssetManager.aiModel')?.trim() || 'gpt-image-2';
+}
+
+function getAiQuality(): AiAssetQuality {
+    const quality = vscode.workspace.getConfiguration().get<string>('expoAssetManager.aiQuality')?.trim();
+    if (quality === 'low' || quality === 'medium' || quality === 'high' || quality === 'auto') {
+        return quality;
+    }
+    return 'medium';
+}
+
+function getAiOutputFormat(): 'png' {
+    const format = vscode.workspace.getConfiguration().get<string>('expoAssetManager.aiOutputFormat')?.trim();
+    return format === 'png' ? 'png' : 'png';
+}
+
+function getAiContextMode(): AiContextMode {
+    const mode = vscode.workspace.getConfiguration().get<string>('expoAssetManager.aiContextMode')?.trim();
+    return mode === 'none' ? 'none' : 'expoConfigAndPackage';
+}
+
+function getStatusMessageClearMs(): number {
+    const value = vscode.workspace.getConfiguration().get<number>('expoAssetManager.statusMessageClearMs');
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return 8000;
+    }
+    return Math.max(0, value);
+}
+
 async function hydrateDroppedUris(panel: vscode.WebviewPanel, uris: string[], targetSlot: AssetKey | null) {
     const files = [];
     for (const raw of uris) {
@@ -197,7 +300,7 @@ function getHtml(webview: vscode.Webview, ctx: vscode.ExtensionContext) {
     const nonce = makeNonce();
     const csp = [
         "default-src 'none'",
-        `img-src ${webview.cspSource} data:`,
+        `img-src ${webview.cspSource} data: blob:`,
         "style-src 'unsafe-inline'",
         `script-src 'nonce-${nonce}'`,
     ].join('; ');

@@ -9,18 +9,81 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:expo-asset-manager.open",
+    "onCommand:expo-asset-manager.setOpenAiApiKey",
+    "onCommand:expo-asset-manager.clearOpenAiApiKey"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "expo-asset-manager.open",
         "title": "Open Expo Asset Manager"
+      },
+      {
+        "command": "expo-asset-manager.setOpenAiApiKey",
+        "title": "Expo Asset Manager: Set OpenAI API Key"
+      },
+      {
+        "command": "expo-asset-manager.clearOpenAiApiKey",
+        "title": "Expo Asset Manager: Clear OpenAI API Key"
       }
     ],
-    "activationEvents": [
-      "onCommand:expo-asset-manager.open"
-    ]
+    "configuration": {
+      "title": "Expo Asset Manager",
+      "properties": {
+        "expoAssetManager.sourcePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional folder containing original source assets."
+        },
+        "expoAssetManager.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional OpenAI API key fallback. Prefer the `Expo Asset Manager: Set OpenAI API Key` command so the key is stored in VS Code SecretStorage."
+        },
+        "expoAssetManager.aiModel": {
+          "type": "string",
+          "default": "gpt-image-2",
+          "description": "OpenAI image generation model used for AI asset generation."
+        },
+        "expoAssetManager.aiQuality": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "auto"
+          ],
+          "default": "medium",
+          "description": "OpenAI image generation quality."
+        },
+        "expoAssetManager.aiOutputFormat": {
+          "type": "string",
+          "enum": [
+            "png"
+          ],
+          "default": "png",
+          "description": "Output image format for AI-generated assets."
+        },
+        "expoAssetManager.aiContextMode": {
+          "type": "string",
+          "enum": [
+            "expoConfigAndPackage",
+            "none"
+          ],
+          "default": "expoConfigAndPackage",
+          "description": "Project context included in AI asset prompts."
+        },
+        "expoAssetManager.statusMessageClearMs": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "description": "Milliseconds before Expo Asset Manager clears generated status and error messages. Set to 0 to disable automatic clearing."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
